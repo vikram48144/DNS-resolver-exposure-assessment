@@ -1,0 +1,205 @@
+@'
+AUTHORISED DNS RESOLVER EXPOSURE ASSESSMENT
+PACKET CAPTURE ANALYSIS
+===========================================
+
+Capture File:
+captures/dns_assessment.pcap
+
+Capture Client:
+10.10.0.20
+
+Protocol:
+DNS over UDP/53
+ICMP captured for unreachable-host evidence.
+
+------------------------------------------------------------
+1. RECURSIVE DNS SERVER
+------------------------------------------------------------
+
+Target:
+10.10.0.2
+
+Recursive test:
+Client 10.10.0.20 queried example.com A with recursion desired.
+
+Observed response:
+- DNS response received
+- RCODE: NOERROR
+- Recursion available (RA): True, confirmed by probe
+- Two A records returned:
+    104.20.23.154
+    172.66.147.243
+
+Packet evidence includes:
+
+10.10.0.20 -> 10.10.0.2
+A? example.com
+
+10.10.0.2 -> 10.10.0.20
+A 104.20.23.154
+A 172.66.147.243
+
+Classification:
+RECURSIVE
+
+Reason:
+The designated external lab client successfully requested recursion
+and obtained resolved A records. The application-level probe also
+observed the RA flag.
+
+------------------------------------------------------------
+2. AUTHORITATIVE-ONLY DNS SERVER
+------------------------------------------------------------
+
+Target:
+10.10.0.3
+
+External recursive test:
+example.com A -> REFUSED
+
+Controlled-zone authoritative test:
+www.lab.example A -> NOERROR
+
+Observed authoritative answer:
+www.lab.example A 10.10.0.100
+
+The DNS response carried the Authoritative Answer (AA) flag.
+tcpdump represents this using '*' in the DNS response notation.
+
+Packet evidence:
+
+10.10.0.20 -> 10.10.0.3
+A? example.com
+
+10.10.0.3 -> 10.10.0.20
+REFUSED
+
+10.10.0.20 -> 10.10.0.3
+A? www.lab.example
+
+10.10.0.3 -> 10.10.0.20
+www.lab.example A 10.10.0.100
+
+Classification:
+AUTHORITATIVE_ONLY
+
+Reason:
+The server refused the external recursive query while answering
+authoritatively for the controlled lab.example zone.
+
+------------------------------------------------------------
+3. REFUSED DNS SERVER
+------------------------------------------------------------
+
+Target:
+10.10.0.4
+
+Recursive test:
+example.com A -> REFUSED
+
+Authoritative test:
+www.lab.example A -> REFUSED
+
+Both queries received explicit DNS REFUSED responses.
+
+Classification:
+REFUSED
+
+Reason:
+The server was reachable and actively returned the DNS REFUSED
+response code for both test cases. This differs from a timeout or
+unreachable host.
+
+------------------------------------------------------------
+4. INCONCLUSIVE TARGET
+------------------------------------------------------------
+
+Target:
+10.10.0.5
+
+The client attempted both:
+
+example.com A
+www.lab.example A
+
+No usable DNS response was received.
+
+The packet capture additionally contains ICMP messages reporting:
+
+host 10.10.0.5 unreachable
+
+Repeated attempts are visible in the capture, consistent with the
+configured retry behaviour.
+
+Classification:
+INCONCLUSIVE
+
+Reason:
+No DNS response exists from which recursive, authoritative, or
+explicit refusal behaviour can be established. Network
+unreachability must not be interpreted as proof that recursion is
+disabled.
+
+------------------------------------------------------------
+GROUND-TRUTH VALIDATION
+------------------------------------------------------------
+
+10.10.0.2  Expected RECURSIVE
+           Observed RECURSIVE
+           PASS
+
+10.10.0.3  Expected AUTHORITATIVE_ONLY
+           Observed AUTHORITATIVE_ONLY
+           PASS
+
+10.10.0.4  Expected REFUSED
+           Observed REFUSED
+           PASS
+
+10.10.0.5  Expected INCONCLUSIVE
+           Observed INCONCLUSIVE
+           PASS
+
+Cases tested: 4
+Correct:      4
+Incorrect:    0
+Accuracy:     100.00%
+
+------------------------------------------------------------
+SAFETY AND SCOPE
+------------------------------------------------------------
+
+The assessment was performed only against designated DNS servers
+inside the controlled Docker laboratory.
+
+Controls:
+- No Internet-wide scanning
+- No spoofed source traffic
+- No amplification testing
+- No DNS stress testing
+- Low query rate
+- Maximum target limit enforced
+- Controlled authoritative test zone
+- Explicit retry and timeout limits
+- Packet-level evidence retained for reproducibility
+
+The assessment methodology is designed around safe DNS resolver
+exposure measurement and the open-recursive-resolver concerns
+described by RFC 5358.
+
+------------------------------------------------------------
+CAPTURE NOTES
+------------------------------------------------------------
+
+The capture was produced from the network namespace of the
+assessment client (10.10.0.20).
+
+tcpdump may display "bad udp cksum" for packets captured in the
+Docker/WSL2 virtual networking environment. This can result from
+checksum offloading and does not by itself indicate invalid DNS
+traffic.
+
+Capture file:
+captures/dns_assessment.pcap
+'@ | Set-Content -Encoding UTF8 .\captures\packet_analysis.txt

@@ -1,0 +1,155 @@
+{
+    "assessment": {
+        "title": "Authorised DNS Resolver Exposure Assessment",
+        "timestamp_utc": "2026-10-05T10:01:07.972494+00:00",
+        "test_zone": "lab.example",
+        "target_count": 4,
+        "max_targets": 20,
+        "queries_per_second": 2,
+        "timeout_seconds": 2,
+        "retries": 2
+    },
+    "results": [
+        {
+            "name": "recursive-dns",
+            "ip": "10.10.0.2",
+            "classification": "RECURSIVE",
+            "expected": "RECURSIVE",
+            "validation": "PASS",
+            "interpretation": "Recursion was demonstrated from the designated external lab client. Resolver configuration should be reviewed to confirm that this exposure is intended.",
+            "recursive_probe": {
+                "server": "10.10.0.2",
+                "domain": "example.com",
+                "responded": true,
+                "rcode": "NOERROR",
+                "rd": true,
+                "ra": true,
+                "aa": false,
+                "answer_count": 2,
+                "answers": [
+                    "104.20.23.154",
+                    "172.66.147.243"
+                ],
+                "error": null,
+                "attempts": 1
+            },
+            "authoritative_probe": {
+                "server": "10.10.0.2",
+                "domain": "www.lab.example",
+                "responded": true,
+                "rcode": "NOERROR",
+                "rd": false,
+                "ra": true,
+                "aa": false,
+                "answer_count": 0,
+                "answers": [],
+                "error": null,
+                "attempts": 1
+            }
+        },
+        {
+            "name": "authoritative-dns",
+            "ip": "10.10.0.3",
+            "classification": "AUTHORITATIVE_ONLY",
+            "expected": "AUTHORITATIVE_ONLY",
+            "validation": "PASS",
+            "interpretation": "Authoritative DNS behaviour was observed for the controlled test zone. External recursion was not demonstrated.",
+            "recursive_probe": {
+                "server": "10.10.0.3",
+                "domain": "example.com",
+                "responded": true,
+                "rcode": "REFUSED",
+                "rd": true,
+                "ra": false,
+                "aa": false,
+                "answer_count": 0,
+                "answers": [],
+                "error": null,
+                "attempts": 1
+            },
+            "authoritative_probe": {
+                "server": "10.10.0.3",
+                "domain": "www.lab.example",
+                "responded": true,
+                "rcode": "NOERROR",
+                "rd": false,
+                "ra": false,
+                "aa": true,
+                "answer_count": 1,
+                "answers": [
+                    "10.10.0.100"
+                ],
+                "error": null,
+                "attempts": 1
+            }
+        },
+        {
+            "name": "refused-dns",
+            "ip": "10.10.0.4",
+            "classification": "REFUSED",
+            "expected": "REFUSED",
+            "validation": "PASS",
+            "interpretation": "The DNS server was reachable but explicitly refused the tested queries.",
+            "recursive_probe": {
+                "server": "10.10.0.4",
+                "domain": "example.com",
+                "responded": true,
+                "rcode": "REFUSED",
+                "rd": true,
+                "ra": false,
+                "aa": false,
+                "answer_count": 0,
+                "answers": [],
+                "error": null,
+                "attempts": 1
+            },
+            "authoritative_probe": {
+                "server": "10.10.0.4",
+                "domain": "www.lab.example",
+                "responded": true,
+                "rcode": "REFUSED",
+                "rd": false,
+                "ra": false,
+                "aa": false,
+                "answer_count": 0,
+                "answers": [],
+                "error": null,
+                "attempts": 1
+            }
+        },
+        {
+            "name": "inconclusive-dns",
+            "ip": "10.10.0.5",
+            "classification": "INCONCLUSIVE",
+            "expected": "INCONCLUSIVE",
+            "validation": "PASS",
+            "interpretation": "Insufficient DNS response evidence was obtained. This result must not be interpreted as proof that recursion is disabled.",
+            "recursive_probe": {
+                "server": "10.10.0.5",
+                "domain": "example.com",
+                "responded": false,
+                "rcode": null,
+                "rd": false,
+                "ra": false,
+                "aa": false,
+                "answer_count": 0,
+                "answers": [],
+                "error": "TIMEOUT",
+                "attempts": 3
+            },
+            "authoritative_probe": {
+                "server": "10.10.0.5",
+                "domain": "www.lab.example",
+                "responded": false,
+                "rcode": null,
+                "rd": false,
+                "ra": false,
+                "aa": false,
+                "answer_count": 0,
+                "answers": [],
+                "error": "TIMEOUT",
+                "attempts": 3
+            }
+        }
+    ]
+}

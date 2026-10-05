@@ -1,0 +1,76 @@
+services:
+  packet-capture:
+    image: nicolaka/netshoot:latest
+    container_name: dns-packet-capture
+    command: sleep infinity
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    volumes:
+      - ./captures:/captures
+    networks:
+      dns-lab:
+        ipv4_address: 10.10.0.10
+
+
+  recursive-dns:
+    image: ubuntu/bind9:latest
+    container_name: recursive-dns
+
+    volumes:
+      - ./lab/recursive/named.conf:/etc/bind/named.conf:ro
+
+    networks:
+      dns-lab:
+        ipv4_address: 10.10.0.2
+
+
+  authoritative-dns:
+    image: ubuntu/bind9:latest
+    container_name: authoritative-dns
+
+    volumes:
+      - ./lab/authoritative/named.conf:/etc/bind/named.conf:ro
+      - ./lab/authoritative/db.lab.example:/etc/bind/db.lab.example:ro
+
+    networks:
+      dns-lab:
+        ipv4_address: 10.10.0.3
+
+
+  refused-dns:
+    image: ubuntu/bind9:latest
+    container_name: refused-dns
+
+    volumes:
+      - ./lab/refused/named.conf:/etc/bind/named.conf:ro
+
+    networks:
+      dns-lab:
+        ipv4_address: 10.10.0.4
+
+
+  dns-probe:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: dns-probe
+
+    volumes:
+      - ./reporting/results:/app/reporting/results
+      - ./reporting/logs:/app/reporting/logs
+
+    networks:
+      dns-lab:
+        ipv4_address: 10.10.0.20
+
+
+networks:
+
+  dns-lab:
+    driver: bridge
+
+    ipam:
+      config:
+        - subnet: 10.10.0.0/24

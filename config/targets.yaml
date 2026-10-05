@@ -1,0 +1,40 @@
+targets:
+
+  - name: "recursive-dns"
+    ip: "10.10.0.2"
+    port: 53
+    expected: "RECURSIVE"
+
+  - name: "authoritative-dns"
+    ip: "10.10.0.3"
+    port: 53
+    expected: "AUTHORITATIVE_ONLY"
+
+  - name: "refused-dns"
+    ip: "10.10.0.4"
+    port: 53
+    expected: "REFUSED"
+
+  - name: "inconclusive-dns"
+    ip: "10.10.0.5"
+    port: 53
+    expected: "INCONCLUSIVE"
+
+
+test_zone: "lab.example"
+
+
+settings:
+
+  timeout: 2
+  retries: 2
+  queries_per_second: 2
+  protocol: "udp"
+
+
+safety:
+
+  max_targets: 20
+  rate_limit_enabled: true
+  allow_spoofing: false
+  allow_stress_testing: false

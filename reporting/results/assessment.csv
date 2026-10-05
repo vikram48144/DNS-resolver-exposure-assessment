@@ -1,0 +1,5 @@
+name,ip,recursive_rcode,recursive_ra,recursive_answers,recursive_attempts,authoritative_rcode,authoritative_aa,authoritative_answers,authoritative_attempts,classification,expected,validation,interpretation
+recursive-dns,10.10.0.2,NOERROR,True,2,1,NOERROR,False,0,1,RECURSIVE,RECURSIVE,PASS,Recursion was demonstrated from the designated external lab client. Resolver configuration should be reviewed to confirm that this exposure is intended.
+authoritative-dns,10.10.0.3,REFUSED,False,0,1,NOERROR,True,1,1,AUTHORITATIVE_ONLY,AUTHORITATIVE_ONLY,PASS,Authoritative DNS behaviour was observed for the controlled test zone. External recursion was not demonstrated.
+refused-dns,10.10.0.4,REFUSED,False,0,1,REFUSED,False,0,1,REFUSED,REFUSED,PASS,The DNS server was reachable but explicitly refused the tested queries.
+inconclusive-dns,10.10.0.5,TIMEOUT,False,0,3,TIMEOUT,False,0,3,INCONCLUSIVE,INCONCLUSIVE,PASS,Insufficient DNS response evidence was obtained. This result must not be interpreted as proof that recursion is disabled.
