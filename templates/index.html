@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>DNS Resolver Exposure Assessment</title>
+
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+
+<body>
+
+<header class="topbar">
+    <div>
+        <h1>DNS Resolver Exposure Assessment</h1>
+        <p>Authorised DNS Operations & Security Lab</p>
+    </div>
+
+    <div class="header-status">
+
+    <div class="authorized-badge">
+        <span>✓</span>
+        AUTHORIZED LAB ONLY
+    </div>
+
+    <div class="system-status">
+        <span class="status-dot"></span>
+        <span>Assessment Console Online</span>
+    </div>
+
+</div>
+</header>
+
+
+<main class="container">
+
+    <!-- Summary cards -->
+    <section class="summary-grid">
+
+        <div class="summary-card">
+            <span class="card-label">TARGETS</span>
+            <strong id="target-count">--</strong>
+            <span>Authorised servers</span>
+        </div>
+
+        <div class="summary-card">
+            <span class="card-label">CORRECT</span>
+            <strong id="correct-count">--</strong>
+            <span>Ground-truth matches</span>
+        </div>
+
+        <div class="summary-card">
+            <span class="card-label">ACCURACY</span>
+            <strong id="accuracy">--</strong>
+            <span>Seeded test cases</span>
+        </div>
+
+        <div class="summary-card">
+            <span class="card-label">RATE LIMIT</span>
+            <strong id="rate-limit">--</strong>
+            <span>Queries / second</span>
+        </div>
+
+    </section>
+
+
+    <!-- Controls -->
+    <section class="panel control-panel">
+
+        <div>
+            <h2>Assessment Control</h2>
+            <p>
+                Probe the designated DNS servers and classify their
+                observed response behaviour.
+            </p>
+        </div>
+
+        <button id="run-button" onclick="runAssessment()">
+            Run Assessment
+        </button>
+
+    </section>
+
+
+    <!-- Progress -->
+    <section id="progress-panel" class="panel hidden">
+
+        <div class="progress-header">
+            <h2>Assessment in Progress</h2>
+            <span id="progress-status">Starting...</span>
+        </div>
+
+        <div class="progress-track">
+            <div id="progress-bar"></div>
+        </div>
+
+        <p id="progress-message">
+            Initialising authorised DNS probes...
+        </p>
+
+    </section>
+
+
+    <!-- Results -->
+    <section class="panel">
+
+        <div class="section-header">
+            <div>
+                <h2>DNS Targets</h2>
+                <p>Observed behaviour compared with seeded ground truth.</p>
+            </div>
+
+            <span id="last-updated">No assessment loaded</span>
+        </div>
+
+
+        <div class="table-wrapper">
+
+            <table>
+
+                <thead>
+                <tr>
+                    <th>Target</th>
+                    <th>IP Address</th>
+                    <th>Recursive Probe</th>
+                    <th>Authoritative Probe</th>
+                    <th>Classification</th>
+                    <th>Expected</th>
+                    <th>Validation</th>
+                </tr>
+                </thead>
+
+                <tbody id="results-body">
+
+                <tr>
+                    <td colspan="7" class="empty-state">
+                        Loading assessment results...
+                    </td>
+                </tr>
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    </section>
+
+<!-- External Domain Lookup -->
+
+<section class="panel domain-panel">
+
+    <div class="section-header">
+        <div>
+            <h2>External Domain Resolution Test</h2>
+            <p>
+                Resolve an Internet domain through the authorised
+                recursive lab resolver.
+            </p>
+        </div>
+
+        <span class="resolver-label">
+            Resolver: 10.10.0.2
+        </span>
+    </div>
+
+
+    <div class="domain-controls">
+
+        <input
+            type="text"
+            id="domain-input"
+            placeholder="www.amazon.com"
+            autocomplete="off"
+            spellcheck="false"
+        >
+
+        <button
+            id="domain-probe-button"
+            onclick="probeDomain()"
+        >
+            Probe Domain
+        </button>
+
+    </div>
+
+
+    <div class="domain-examples">
+        Try:
+        <button onclick="setDomain('www.amazon.com')">
+            www.amazon.com
+        </button>
+
+        <button onclick="setDomain('www.zoho.in')">
+            www.zoho.in
+        </button>
+
+        <button onclick="setDomain('www.google.com')">
+            www.google.com
+        </button>
+    </div>
+
+
+    <div id="domain-status" class="domain-status hidden">
+        Querying resolver...
+    </div>
+
+
+    <div id="domain-result" class="domain-result hidden">
+
+        <div class="domain-result-grid">
+
+            <div>
+                <span>DOMAIN</span>
+                <strong id="domain-result-name">--</strong>
+            </div>
+
+            <div>
+                <span>RESOLVER</span>
+                <strong id="domain-result-resolver">--</strong>
+            </div>
+
+            <div>
+                <span>RCODE</span>
+                <strong id="domain-result-rcode">--</strong>
+            </div>
+
+            <div>
+                <span>RECURSION AVAILABLE</span>
+                <strong id="domain-result-ra">--</strong>
+            </div>
+
+            <div>
+                <span>ANSWER COUNT</span>
+                <strong id="domain-result-count">--</strong>
+            </div>
+
+            <div>
+                <span>OBSERVED BEHAVIOUR</span>
+                <strong id="domain-result-classification">--</strong>
+            </div>
+
+        </div>
+
+
+        <div class="domain-answer-section">
+
+            <span>DNS ANSWERS</span>
+
+            <pre id="domain-result-answers">No answers</pre>
+
+        </div>
+
+    </div>
+
+</section>
+    <!-- Selected target evidence -->
+    <section class="panel">
+
+        <div class="section-header">
+            <div>
+                <h2>Probe Evidence</h2>
+                <p>Packet-level indicators used by the classifier.</p>
+            </div>
+
+            <span id="selected-target">
+                Select a target
+            </span>
+        </div>
+
+
+        <div id="evidence-placeholder" class="evidence-placeholder">
+            Click a target row to inspect its DNS evidence.
+        </div>
+
+
+        <div id="evidence-content" class="hidden">
+
+            <div class="evidence-grid">
+
+                <div class="evidence-card">
+
+                    <h3>Recursive Probe</h3>
+
+                    <div class="metric">
+                        <span>RCODE</span>
+                        <strong id="recursive-rcode">--</strong>
+                    </div>
+
+                    <div class="metric">
+                        <span>RD Flag</span>
+                        <strong id="recursive-rd">--</strong>
+                    </div>
+
+                    <div class="metric">
+                        <span>RA Flag</span>
+                        <strong id="recursive-ra">--</strong>
+                    </div>
+
+                    <div class="metric">
+                        <span>Answers</span>
+                        <strong id="recursive-answers">--</strong>
+                    </div>
+
+                    <div class="metric">
+                        <span>Attempts</span>
+                        <strong id="recursive-attempts">--</strong>
+                    </div>
+
+                </div>
+
+
+                <div class="evidence-card">
+
+                    <h3>Authoritative Probe</h3>
+
+                    <div class="metric">
+                        <span>RCODE</span>
+                        <strong id="auth-rcode">--</strong>
+                    </div>
+
+                    <div class="metric">
+                        <span>AA Flag</span>
+                        <strong id="auth-aa">--</strong>
+                    </div>
+
+                    <div class="metric">
+                        <span>Answers</span>
+                        <strong id="auth-answers">--</strong>
+                    </div>
+
+                    <div class="metric">
+                        <span>Attempts</span>
+                        <strong id="auth-attempts">--</strong>
+                    </div>
+
+                    <div class="probe-extra">
+                        <span>DNS Answers</span>
+                        <div id="auth-answer-list" class="answer-box">
+                            No answers
+                        </div>
+                    </div>
+
+                    <div class="probe-extra">
+                        <span>Error</span>
+                        <div id="auth-error" class="error-box">
+                            None
+                        </div>
+                    </div>
+
+                </div>
+
+
+                <div class="evidence-card classification-card">
+
+                    <h3>Assessment</h3>
+
+                    <div id="evidence-classification"
+                         class="large-classification">
+                        --
+                    </div>
+
+                    <p id="evidence-interpretation">
+                        No target selected.
+                    </p>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </section>
+
+
+    <!-- Evidence downloads -->
+    <section class="panel">
+
+        <h2>Assessment Evidence</h2>
+
+        <p class="evidence-description">
+            Export generated reports or inspect the saved packet-analysis
+            evidence.
+        </p>
+
+        <div class="download-grid">
+
+            <a href="/download/json" class="download-button">
+                JSON Report
+            </a>
+
+            <a href="/download/csv" class="download-button">
+                CSV Report
+            </a>
+
+            <a href="/download/packet-analysis" class="download-button">
+                Packet Analysis
+            </a>
+
+        </div>
+
+    </section>
+
+
+    <!-- Safety -->
+    <section class="panel safety-panel">
+
+        <h2>Operational Safety</h2>
+
+        <div class="safety-grid">
+
+            <div>
+                <span>✓</span>
+                Maximum 20 authorised targets
+            </div>
+
+            <div>
+                <span>✓</span>
+                Rate-controlled probing
+            </div>
+
+            <div>
+                <span>✓</span>
+                No spoofed traffic
+            </div>
+
+            <div>
+                <span>✓</span>
+                No amplification stress testing
+            </div>
+
+        </div>
+
+        <p>
+            Designed for designated infrastructure and controlled
+            laboratory measurement in accordance with the project's
+            RFC 5358-oriented assessment scope.
+        </p>
+
+    </section>
+
+</main>
+
+
+<footer>
+    Authorised DNS Resolver Exposure Assessment
+</footer>
+
+
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+
+</body>
+</html>

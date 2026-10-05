@@ -1,7 +1,7 @@
 {
     "assessment": {
         "title": "Authorised DNS Resolver Exposure Assessment",
-        "timestamp_utc": "2026-10-05T10:01:07.972494+00:00",
+        "timestamp_utc": "2026-10-05T11:08:29.903777+00:00",
         "test_zone": "lab.example",
         "target_count": 4,
         "max_targets": 20,
@@ -27,8 +27,8 @@
                 "aa": false,
                 "answer_count": 2,
                 "answers": [
-                    "104.20.23.154",
-                    "172.66.147.243"
+                    "172.66.147.243",
+                    "104.20.23.154"
                 ],
                 "error": null,
                 "attempts": 1
