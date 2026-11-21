@@ -1,5 +1,184 @@
 # Authorised DNS Resolver Exposure Assessment
 
+## DNS Recursion Access Control Verification (RFC 5358)
+
+[RFC 5358 section 4](https://www.rfc-editor.org/rfc/rfc5358.html#section-4)
+recommends providing recursive lookup service only to intended clients. Open
+recursive service can contribute to reflection attacks. This feature verifies
+IP-based recursion and cache access using two real client containers, separately
+from the existing four-class DNS behaviour assessment.
+
+| Component | Trusted `dns-lab` (10.10.0.0/24) | Internal `external-test` (10.20.0.0/24) |
+|---|---|---|
+| Same recursive BIND instance | 10.10.0.2 | 10.20.0.2 |
+| Assessment app / authorised client | 10.10.0.20 | Not attached |
+| `unauthorized-dns-client` | Not attached | 10.20.0.30 |
+| Authoritative / refusing DNS | 10.10.0.3 / 10.10.0.4 | Not attached |
+| Existing packet-capture container | 10.10.0.10 | Not attached |
+
+10.10.0.5 remains unused. `external-test` is an internal Docker bridge with no
+published ports on its client. The resolver retains its non-internal trusted
+network for outbound resolution and its existing Docker forwarder. The client
+reuses the Python image and dnspython dependencies, drops all capabilities and
+has a read-only root filesystem.
+
+`lab/recursive/named.conf` defines `trusted_clients` as **only** 10.10.0.0/24.
+Both `allow-recursion` and `allow-query-cache` use that ACL. `allow-query { any; };`
+allows the untrusted client to receive an explicit refusal; it does not grant
+recursion or cache access. BIND listens on both IPv4 interfaces. The authoritative
+and refusing configurations are unchanged.
+
+### Build and run
+
+Run from `dns-resolver-assessment`:
+
+```powershell
+docker compose config
+docker compose up -d --build
+docker compose ps
+docker compose exec -T recursive-dns named-checkconf /etc/bind/named.conf
+docker compose exec -T dns-probe python -m security.recursion_access_test
+```
+
+Open http://localhost:5000 and click **Verify Recursion Access Control**. The
+separate section displays the policy, two clients, query, response flags, RCODE,
+answers, expected and observed access decisions, errors and overall status.
+`POST /api/verify-recursion-acl` accepts an empty body or `{}` only. It never
+accepts commands, client addresses, arbitrary targets or domains. Concurrent
+dashboard ACL runs receive HTTP 429.
+
+The application queries from its own 10.10.0.20 interface. A fixed worker in
+`unauthorized-dns-client` queries from its own 10.20.0.30 interface. Binding a
+local source address selects a real interface; it does not spoof an address.
+The worker receives request IDs over the `acl-exchange` named volume, with
+expiry, atomic writes and bounded waiting. No Docker socket, Docker execution
+API, extra network attachment or HTTP listener is needed. Both queries are
+fixed `example.com A`, UDP/53, RD=1, with a two-second DNS timeout and no retries.
+The runner spaces tests by 0.5 seconds and the worker also paces requests.
+Start the lab first and use `docker compose exec dns-probe`, rather than
+`compose run`, to preserve the required authorised source address.
+
+### Manual evidence and outcome rules
+
+```powershell
+docker compose exec -T dns-probe python -m security.recursion_access_test --client authorised
+docker compose exec -T unauthorized-dns-client python -B -m security.recursion_access_test --client unauthorised
+docker inspect recursive-dns dns-probe unauthorized-dns-client --format '{{.Name}} {{json .NetworkSettings.Networks}}'
+docker network inspect dns-resolver-assessment_external-test
+```
+
+Expected authorised evidence: NOERROR, RD=1, RA=1 and a valid IPv4 answer,
+classified ALLOWED. Expected untrusted evidence: REFUSED and no answers,
+classified DENIED. RA alone is never proof of recursive access; a missing
+response has unknown flags. A timeout, SERVFAIL, malformed/missing worker
+response or network error is INCONCLUSIVE, not a successful denial.
+
+Overall PASS requires ALLOWED for the authorised client and DENIED for the
+unauthorised client. Explicit denial of the authorised client or demonstrated
+recursive access for the unauthorised client produces FAIL, even when the
+other test is inconclusive. Otherwise the result is INCONCLUSIVE.
+
+Actual results, rather than expected values, are saved with UTC timestamp,
+query, server/client addresses, subnets, probe evidence, errors and limitations
+to `artifacts/results/recursion_access_control.json`. Download through
+`/download/recursion-acl`. Existing assessment JSON/CSV and logs are preserved.
+An authorised RECURSIVE classification alongside an ACL PASS is expected:
+the classifier describes service from that client, while the ACL test compares
+access from two different networks.
+
+### Automated checks
+
+```powershell
+python -m pytest tests -v
+docker compose exec -T dns-probe python -m pytest tests -v
+node tests/acl-ui.cjs
+node tests/lab-ui.cjs
+node tests/evidence-ui.cjs
+```
+
+Unit tests cover allowed/denied policies, both failure cases, timeout, missing
+worker, ambiguous responses, real-source argument selection, mailbox exchange,
+input restrictions, safety configuration, report isolation and Compose topology.
+They use mocked DNS evidence and do not claim live network verification. The
+Node ACL check uses real backend results and checks the UI renderer and download;
+the existing scripts exercise the original four targets and evidence rendering.
+
+### Optional packet evidence
+
+The existing capture container is on the trusted network only; it cannot be
+assumed to see switched unicast traffic between other containers. To observe
+both interfaces, start a temporary capture sharing the resolver's network
+namespace (requires the netshoot image and capture capabilities):
+
+```powershell
+docker run --rm --name recursion-acl-capture --network container:recursive-dns --cap-add NET_RAW --cap-add NET_ADMIN -v "${PWD}/captures:/captures" nicolaka/netshoot tcpdump -i any -nn -U -w /captures/recursion-acl.pcap 'udp port 53 and (host 10.10.0.20 or host 10.20.0.30)'
+```
+
+Run the ACL verification in another terminal, then stop capture with Ctrl+C.
+Inspect the actual packet source addresses and DNS responses in Wireshark.
+This is an optional procedure; packet capture is not performed by the dashboard.
+
+### Limits
+
+This verifies IP-based access control for two IPv4 sources, one domain and UDP.
+An answer may come from cache; the test does not prove a fresh upstream lookup.
+It does not implement DNSSEC, authenticate identities, detect all IP spoofing,
+test TCP/IPv6 policy, or prove resistance to every DNS attack. RFC 5358 also
+discusses ingress filtering; source ACLs alone do not replace it. External
+resolution depends on the host/upstream network. An unavailable upstream can
+make the authorised test INCONCLUSIVE even when the ACL is correct.
+
+The named volume is a trusted local lab coordination channel, not a boundary
+against a compromised container or Docker administrator. Flask retains the
+existing development-server deployment; do not expose this lab dashboard to
+untrusted networks.
+
+### Recorded verification — 21 November 2026
+
+The Docker lab was built and started successfully. `docker compose config`
+and `named-checkconf /etc/bind/named.conf` exited successfully. Docker inspection
+confirmed the addresses above, the untrusted client's sole network attachment,
+and `external-test` with `Internal=true`.
+
+| Actual source → destination | RCODE | Response RD / RA | A answers | Observed |
+|---|---|---|---|---|
+| 10.10.0.20 → 10.10.0.2 | NOERROR | True / True | 104.20.23.154, 172.66.147.243 | ALLOWED |
+| 10.20.0.30 → 10.20.0.2 | REFUSED | True / False | None | DENIED |
+
+Overall live verification: **PASS**. The authorised query ran first, warming
+the cache before the untrusted query; the untrusted client still received no
+cached answers. These addresses are observed DNS data, not fixed test fixtures.
+The original assessment classified all four targets correctly (4/4, 100%).
+The Python suite passed 28 tests on the host and in the rebuilt Python 3.12
+container. `acl-ui.cjs`, `lab-ui.cjs` and `evidence-ui.cjs` passed their live API
+and JavaScript renderer checks. These checks do not measure visual layout in a
+real browser. No packet capture was recorded during this verification.
+
+## Interactive dashboard demonstrations
+
+Start the lab and dashboard with `docker compose up -d --build`, then open
+http://localhost:5000. The **External Domain Resolution Test** continues to
+resolve your chosen domain through the fixed recursive resolver `10.10.0.2`.
+
+The separate **Lab DNS Behaviour Test** lets you select one of the four
+predefined lab targets and click **Probe DNS Server**. It sends `example.com A`
+with RD=1 and `www.lab.example A` with RD=0, then uses the shared classifier.
+Both responses, flags, records, attempts and errors appear below the selector.
+The authoritative target should refuse the recursive query and return an
+authoritative `10.10.0.100` answer for `www.lab.example`.
+
+`POST /api/lab-probe` accepts only a JSON object such as
+`{"target":"authoritative"}`. Allowed target names are `recursive`,
+`authoritative`, `refused` and `inconclusive`. Arbitrary IPs and extra request
+fields are rejected. The endpoint uses the configured timeout, retries and
+query rate, including pacing retries. Concurrent lab requests receive HTTP 429
+while a test is running. Lab demonstrations do not replace the saved assessment
+reports. The existing assessment and external-domain endpoints are unchanged.
+
+With the Docker lab running, verify all four live classifications, response
+evidence, UI rendering and existing downloads with `node tests/lab-ui.cjs`.
+The intentionally unused target takes longer because it exhausts timeout retries.
+
 A reproducible cybersecurity tool for determining whether designated DNS servers provide recursive DNS resolution to an external lab client and for classifying their observed DNS behaviour.
 
 The project creates a controlled Docker-based DNS laboratory containing known DNS configurations, probes each server using Python and `dnspython`, classifies the observed behaviour, validates the result against seeded ground truth, and generates machine-readable reports, logs, and packet-capture evidence.
@@ -365,57 +544,30 @@ The project is intended only for systems for which testing has been explicitly a
 
 ```text
 dns-resolver-assessment/
-|
-+-- config/
-|   +-- targets.yaml
-|
-+-- lab/
-|   +-- recursive/
-|   |   +-- named.conf
-|   |
-|   +-- authoritative/
-|   |   +-- named.conf
-|   |   +-- db.lab.example
-|   |
-|   +-- refused/
-|       +-- named.conf
-|
-+-- probes/
-|   +-- recursive_probe.py
-|   +-- authoritative_probe.py
-|
-+-- classifier/
-|   +-- classifier.py
-|
-+-- reporting/
-|   +-- report.py
-|   +-- logger.py
-|   |
-|   +-- results/
-|   |   +-- assessment.json
-|   |   +-- assessment.csv
-|   |
-|   +-- logs/
-|       +-- dns_assessment.log
-|
-+-- captures/
-|   +-- dns_assessment.pcap
-|   +-- packet_analysis.txt
-|
-+-- tests/
-|   +-- test_classifier.py
-|
-+-- main.py
-+-- docker-compose.yml
-+-- Dockerfile
-+-- requirements.txt
-+-- README.md
+|-- app.py                 # Flask dashboard and API
+|-- main.py                # Assessment command entry point
+|-- classifier/            # Classification logic
+|-- probes/                # Recursive and authoritative probes
+|-- reporting/             # Report generation and logging code
+|-- config/                # Target and runtime configuration
+|-- lab/                   # BIND configurations and controlled zone
+|-- templates/             # Dashboard HTML
+|-- static/                # Dashboard CSS and JavaScript
+|-- tests/                 # Classifier tests
+|-- artifacts/
+|   |-- results/           # Generated JSON and CSV reports
+|   `-- logs/              # Assessment evidence logs
+|-- captures/              # Packet captures and analysis
+|-- Dockerfile
+|-- docker-compose.yml
+|-- requirements.txt
+`-- README.md
 ```
 
-Depending on the host filesystem, the Docker build file name must match the spelling referenced by `docker-compose.yml`.
+Run the commands below from this directory. Generated evidence is separate
+from Python source; existing reports, logs, and captures are preserved.
 
 ---
-
 ## 11. Requirements
 
 The project was developed and tested using:
@@ -509,7 +661,7 @@ The assessment generates machine-readable reports.
 ### JSON
 
 ```text
-reporting/results/assessment.json
+artifacts/results/assessment.json
 ```
 
 The JSON report contains:
@@ -527,7 +679,7 @@ The JSON report contains:
 ### CSV
 
 ```text
-reporting/results/assessment.csv
+artifacts/results/assessment.csv
 ```
 
 The CSV report provides a compact representation suitable for further analysis or importing into spreadsheet/data-analysis tools.
@@ -539,7 +691,7 @@ The CSV report provides a compact representation suitable for further analysis o
 Probe activity and classification decisions are written to:
 
 ```text
-reporting/logs/dns_assessment.log
+artifacts/logs/dns_assessment.log
 ```
 
 The evidence log records information such as:
@@ -802,11 +954,11 @@ A completed assessment produces three complementary forms of evidence:
 
 ```text
 Application evidence
-    reporting/results/assessment.json
-    reporting/results/assessment.csv
+    artifacts/results/assessment.json
+    artifacts/results/assessment.csv
 
 Operational evidence
-    reporting/logs/dns_assessment.log
+    artifacts/logs/dns_assessment.log
 
 Network evidence
     captures/dns_assessment.pcap

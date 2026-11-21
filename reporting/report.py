@@ -44,7 +44,7 @@ def generate_json_report(results, config):
     """
 
     os.makedirs(
-        "reporting/results",
+        "artifacts/results",
         exist_ok=True
     )
 
@@ -114,7 +114,7 @@ def generate_json_report(results, config):
 
         report["results"].append(entry)
 
-    path = "reporting/results/assessment.json"
+    path = "artifacts/results/assessment.json"
 
     with open(
         path,
@@ -137,11 +137,11 @@ def generate_csv_report(results):
     """
 
     os.makedirs(
-        "reporting/results",
+        "artifacts/results",
         exist_ok=True
     )
 
-    path = "reporting/results/assessment.csv"
+    path = "artifacts/results/assessment.csv"
 
     fieldnames = [
         "name",

@@ -484,7 +484,7 @@ def main():
 
     print(
         "Evidence log: "
-        "reporting/logs/dns_assessment.log"
+        "artifacts/logs/dns_assessment.log"
     )
 
     print("=" * 72)

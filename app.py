@@ -2,13 +2,115 @@ from flask import Flask, render_template, jsonify, send_from_directory
 import json
 import os
 import subprocess
+import threading
+import time
+import yaml
 from probes.recursive_probe import recursive_probe
+from probes.authoritative_probe import authoritative_probe
+from classifier.classifier import classify_dns_server
+from main import run_probe_with_retries
+from security.recursion_access_test import run_verification
+from classifier.classifier import classify_dns_server
 
 app = Flask(__name__)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-REPORT_DIR = os.path.join(BASE_DIR, "reporting", "results")
+REPORT_DIR = os.path.join(BASE_DIR, "artifacts", "results")
 CAPTURE_DIR = os.path.join(BASE_DIR, "captures")
+
+LAB_TARGETS = {
+    "recursive": ("Recursive DNS", "10.10.0.2"),
+    "authoritative": ("Authoritative-only DNS", "10.10.0.3"),
+    "refused": ("Refused DNS", "10.10.0.4"),
+    "inconclusive": ("Inconclusive DNS", "10.10.0.5")
+}
+lab_probe_lock = threading.Lock()
+lab_last_query = 0.0
+acl_probe_lock = threading.Lock()
+
+
+@app.route("/api/verify-recursion-acl", methods=["POST"])
+def verify_recursion_acl():
+    from flask import request
+    if request.get_data() and request.get_json(silent=True) != {}:
+        return jsonify(success=False, message="This fixed lab test accepts no arguments."), 400
+    if not acl_probe_lock.acquire(blocking=False):
+        return jsonify(success=False, message="ACL verification is already running."), 429
+    try:
+        with open(os.path.join(BASE_DIR, "config", "targets.yaml"), encoding="utf-8") as file:
+            config = yaml.safe_load(file)
+        report = run_verification(config, REPORT_DIR)
+        return jsonify(success=True, data=report)
+    except ValueError as error:
+        return jsonify(success=False, message=str(error)), 400
+    except Exception as error:
+        return jsonify(success=False, message=str(error)), 500
+    finally:
+        acl_probe_lock.release()
+
+
+@app.route("/download/recursion-acl")
+def download_recursion_acl():
+    return send_from_directory(REPORT_DIR, "recursion_access_control.json", as_attachment=True)
+
+
+@app.route("/api/lab-probe", methods=["POST"])
+def lab_probe():
+    """Probe only the predefined lab targets, retaining both sets of evidence."""
+    from flask import request
+
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify(success=False, message="Provide a JSON object with a lab target."), 400
+    target = data.get("target")
+    if not isinstance(target, str) or target not in LAB_TARGETS:
+        return jsonify(success=False, message="Invalid authorised lab target."), 400
+    if set(data) - {"target"}:
+        return jsonify(success=False, message="Only a predefined target may be supplied."), 400
+    if not lab_probe_lock.acquire(blocking=False):
+        return jsonify(success=False, message="A lab probe is running. Please wait and retry."), 429
+
+    try:
+        with open(os.path.join(BASE_DIR, "config", "targets.yaml"), encoding="utf-8") as file:
+            config = yaml.safe_load(file)
+        safety = config["safety"]
+        settings = config["settings"]
+        if (len(config["targets"]) > safety.get("max_targets", 20)
+                or safety.get("allow_spoofing", False)
+                or safety.get("allow_stress_testing", False)):
+            raise ValueError("Unsafe laboratory configuration.")
+        name, ip = LAB_TARGETS[target]
+        if not any(item["ip"] == ip for item in config["targets"]):
+            raise ValueError("Selected target is not enabled in the lab configuration.")
+        timeout = float(settings.get("timeout", 2))
+        retries = int(settings.get("retries", 2))
+        rate = float(settings.get("queries_per_second", 2))
+        if timeout <= 0 or retries < 0 or rate <= 0:
+            raise ValueError("Lab timeout and query rate must be positive, and retries nonnegative.")
+
+        def paced_probe(probe, **kwargs):
+            global lab_last_query
+            time.sleep(max(0, lab_last_query + 1 / rate - time.monotonic()))
+            lab_last_query = time.monotonic()
+            return probe(**kwargs)
+
+        def run(probe, domain):
+            return run_probe_with_retries(
+                lambda **kwargs: paced_probe(probe, **kwargs),
+                retries=retries, server_ip=ip, domain=domain, port=53, timeout=timeout
+            )
+
+        recursive = run(recursive_probe, "example.com")
+        authoritative = run(authoritative_probe, "www.lab.example")
+        return jsonify(
+            success=True, target=target, name=name, ip=ip,
+            classification=classify_dns_server(recursive, authoritative),
+            recursive_probe=recursive, authoritative_probe=authoritative
+        )
+    except Exception as error:
+        return jsonify(success=False, message=str(error)), 500
+    finally:
+        lab_probe_lock.release()
 
 
 @app.route("/")

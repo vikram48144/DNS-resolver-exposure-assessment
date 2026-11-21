@@ -256,6 +256,68 @@
     </div>
 
 </section>
+
+<section class="panel lab-panel" aria-labelledby="lab-heading">
+    <div class="section-header"><div>
+        <h2 id="lab-heading">Lab DNS Behaviour Test</h2>
+        <p>Compare both DNS probes against a predefined authorised lab target.</p>
+    </div></div>
+    <label for="lab-target">Authorised DNS target</label>
+    <div class="domain-controls">
+        <select id="lab-target">
+            <option value="recursive">Recursive DNS ? 10.10.0.2</option>
+            <option value="authoritative">Authoritative-only DNS ? 10.10.0.3</option>
+            <option value="refused">Refused DNS ? 10.10.0.4</option>
+            <option value="inconclusive">Inconclusive DNS ? 10.10.0.5</option>
+        </select>
+        <button id="lab-probe-button" onclick="probeLabServer()">Probe DNS Server</button>
+    </div>
+    <div id="lab-status" class="domain-status hidden" role="status" aria-live="polite"></div>
+    <div id="lab-result" class="hidden">
+        <div class="lab-result-heading"><strong id="lab-selected-target"></strong>
+            <div>Final observed behaviour: <span id="lab-classification"></span></div>
+        </div>
+        <p>Flags below describe received responses. No response means flags are unknown.</p>
+        <div class="lab-evidence-grid">
+        <div class="evidence-card">
+            <h3>Recursive Probe</h3><p>example.com A, RD=1</p>
+            <div class="metric"><span>RCODE</span><strong id="lab-recursive-rcode">--</strong></div>
+<div class="metric"><span>Response RD</span><strong id="lab-recursive-rd">--</strong></div>
+<div class="metric"><span>Response RA</span><strong id="lab-recursive-ra">--</strong></div>
+<div class="metric"><span>Response AA</span><strong id="lab-recursive-aa">--</strong></div>
+<div class="metric"><span>Answer count</span><strong id="lab-recursive-answer-count">--</strong></div>
+<div class="metric"><span>Attempts</span><strong id="lab-recursive-attempts">--</strong></div>
+            <div class="probe-extra"><span>Returned records</span><pre id="lab-recursive-answers" class="answer-box">No answers</pre></div>
+            <div class="probe-extra"><span>Timeout / error</span><div id="lab-recursive-error" class="error-box">None</div></div>
+        </div>
+
+        <div class="evidence-card">
+            <h3>Authoritative Probe</h3><p>www.lab.example A, RD=0</p>
+            <div class="metric"><span>RCODE</span><strong id="lab-authoritative-rcode">--</strong></div>
+<div class="metric"><span>Response RD</span><strong id="lab-authoritative-rd">--</strong></div>
+<div class="metric"><span>Response RA</span><strong id="lab-authoritative-ra">--</strong></div>
+<div class="metric"><span>Response AA</span><strong id="lab-authoritative-aa">--</strong></div>
+<div class="metric"><span>Answer count</span><strong id="lab-authoritative-answer-count">--</strong></div>
+<div class="metric"><span>Attempts</span><strong id="lab-authoritative-attempts">--</strong></div>
+            <div class="probe-extra"><span>Returned records</span><pre id="lab-authoritative-answers" class="answer-box">No answers</pre></div>
+            <div class="probe-extra"><span>Timeout / error</span><div id="lab-authoritative-error" class="error-box">None</div></div>
+        </div></div>
+        <p id="lab-interpretation" class="lab-interpretation"></p>
+    </div>
+</section>
+    <section class="panel" aria-labelledby="acl-heading">
+        <div class="section-header"><div>
+            <h2 id="acl-heading">DNS Recursion Access Control Verification</h2>
+            <p>Separate RFC 5358-oriented verification from two real Docker clients.</p>
+        </div></div>
+        <button id="acl-button" onclick="verifyRecursionAcl()">Verify Recursion Access Control</button>
+        <p id="acl-status" role="status" aria-live="polite">Not yet tested.</p>
+        <p id="acl-policy"></p>
+        <div id="acl-tests" class="lab-evidence-grid"></div>
+        <p id="acl-overall"></p>
+        <p id="acl-limitations"></p>
+        <a class="download-button" href="/download/recursion-acl">Download ACL Verification JSON</a>
+    </section>
     <!-- Selected target evidence -->
     <section class="panel">
 
@@ -307,6 +369,16 @@
                     <div class="metric">
                         <span>Attempts</span>
                         <strong id="recursive-attempts">--</strong>
+                    </div>
+
+                    <div class="probe-extra">
+                        <span>DNS Answers</span>
+                        <div id="recursive-answer-list" class="answer-box">No answers</div>
+                    </div>
+
+                    <div class="probe-extra">
+                        <span>Error</span>
+                        <div id="recursive-error" class="error-box">None</div>
                     </div>
 
                 </div>

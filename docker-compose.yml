@@ -21,6 +21,8 @@ services:
     networks:
       dns-lab:
         ipv4_address: 10.10.0.2
+      external-test:
+        ipv4_address: 10.20.0.2
 
   authoritative-dns:
     image: ubuntu/bind9:latest
@@ -42,6 +44,11 @@ services:
         ipv4_address: 10.10.0.4
 
   dns-probe:
+    depends_on:
+      - recursive-dns
+      - authoritative-dns
+      - refused-dns
+      - unauthorized-dns-client
     build:
       context: .
       dockerfile: Dockerfile
@@ -51,13 +58,38 @@ services:
       - "5000:5000"
 
     volumes:
-      - ./reporting/results:/app/reporting/results
-      - ./reporting/logs:/app/reporting/logs
+      - ./artifacts/results:/app/artifacts/results
+      - ./artifacts/logs:/app/artifacts/logs
+      - ./captures:/app/captures:ro
+      - acl-exchange:/acl-exchange
+    environment:
+      ACL_EXCHANGE_DIR: /acl-exchange
 
     networks:
       dns-lab:
         ipv4_address: 10.10.0.20
 
+
+  unauthorized-dns-client:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: unauthorized-dns-client
+    command: ["python", "-B", "-m", "security.recursion_access_test", "--worker"]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+    environment:
+      ACL_EXCHANGE_DIR: /acl-exchange
+    volumes:
+      - acl-exchange:/acl-exchange
+    networks:
+      external-test:
+        ipv4_address: 10.20.0.30
+
+volumes:
+  acl-exchange:
 
 networks:
   dns-lab:
@@ -65,3 +97,9 @@ networks:
     ipam:
       config:
         - subnet: 10.10.0.0/24
+  external-test:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.20.0.0/24

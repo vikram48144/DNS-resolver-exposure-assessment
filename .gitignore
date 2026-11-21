@@ -6,3 +6,14 @@ venv/
 .env
 .env.*
 !.env.example
+
+# Generated evidence (already tracked evidence remains versioned).
+artifacts/logs/*
+artifacts/results/*
+captures/*.pcap
+captures/*.pcapng
+
+# Preserve the existing evidence files in their new locations.
+!artifacts/logs/dns_assessment.log
+!artifacts/results/assessment.json
+!artifacts/results/assessment.csv

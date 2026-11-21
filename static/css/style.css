@@ -4,6 +4,24 @@
     padding: 0;
 }
 
+.lab-panel > label { display: block; margin-top: 18px; color: var(--muted); }
+#lab-target {
+    flex: 1; min-width: 0; padding: 13px 15px; border-radius: 7px;
+    background: #071421; color: var(--text); border: 1px solid var(--border);
+    font: inherit;
+}
+#lab-target:focus-visible, #lab-probe-button:focus-visible, #acl-button:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+#lab-probe-button, #acl-button {
+    padding: 12px 22px; border: 0; border-radius: 7px; background: var(--blue);
+    color: #04101a; font-weight: 800; cursor: pointer;
+}
+#lab-probe-button:disabled, #acl-button:disabled { opacity: .55; cursor: not-allowed; }
+.lab-result-heading { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; margin: 24px 0 12px; }
+.lab-evidence-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin-top: 16px; }
+.lab-evidence-grid .answer-box, .lab-evidence-grid .error-box { white-space: pre-wrap; overflow-wrap: anywhere; }
+.lab-interpretation { margin-top: 18px; }
+@media (max-width: 800px) { .lab-evidence-grid { grid-template-columns: 1fr; } }
+
 :root {
     --bg: #07111f;
     --panel: #0d1b2a;
@@ -691,4 +709,10 @@ footer {
     .domain-controls {
         flex-direction: column;
     }
+}
+.acl-evidence {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    line-height: 1.8;
+    color: #9ccaff;
 }

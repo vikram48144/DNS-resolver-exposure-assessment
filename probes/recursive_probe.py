@@ -10,7 +10,8 @@ def recursive_probe(
     server_ip,
     domain="example.com",
     port=53,
-    timeout=2
+    timeout=2,
+    source=None
 ):
     """
     Send a DNS query with recursion requested (RD=1).
@@ -53,7 +54,8 @@ def recursive_probe(
             query,
             server_ip,
             port=port,
-            timeout=timeout
+            timeout=timeout,
+            source=source
         )
 
         result["responded"] = True

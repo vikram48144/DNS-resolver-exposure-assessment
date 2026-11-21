@@ -1,5 +1,56 @@
 let assessmentData = null;
 
+function renderAclResult(data) {
+    document.getElementById("acl-policy").textContent =
+        `Trusted: ${data.trusted_subnet}; untrusted: ${data.untrusted_subnet}. ` +
+        `Query: ${data.query.domain} ${data.query.type}; requested RD=${Number(data.query.rd)}.`;
+    const container = document.getElementById("acl-tests");
+    container.innerHTML = "";
+    for (const [role, test] of Object.entries(data.tests)) {
+        const probe = test.probe;
+        const card = document.createElement("div");
+        card.className = "evidence-card";
+        const heading = document.createElement("h3");
+        heading.textContent = `${role === "authorised" ? "Authorised" : "Unauthorised"} client`;
+        const evidence = document.createElement("pre");
+        evidence.className = "acl-evidence";
+        evidence.textContent = [
+            `Client: ${test.client}`, `Recursive DNS server: ${test.server}:${test.port}`,
+            `Response received: ${probe.responded}`,
+            `Response RD: ${probe.responded ? probe.rd : "unknown"}`,
+            `Response RA: ${probe.responded ? probe.ra : "unknown"}`,
+            `RCODE: ${probe.rcode ?? "unknown"}`,
+            `Returned answers: ${(probe.answers || []).join(", ") || "none"}`,
+            `Access decision: ${test.access_decision}`, `Expected result: ${test.expected}`,
+            `Observed result: ${test.observed}`, `Error: ${probe.error || "none"}`
+        ].join("\n");
+        card.append(heading, evidence);
+        container.append(card);
+    }
+    document.getElementById("acl-overall").textContent = `Overall verification status: ${data.status}`;
+    document.getElementById("acl-limitations").textContent = data.limitations.join(" ");
+}
+
+async function verifyRecursionAcl() {
+    const button = document.getElementById("acl-button");
+    const status = document.getElementById("acl-status");
+    button.disabled = true;
+    document.getElementById("acl-tests").innerHTML = "";
+    document.getElementById("acl-overall").textContent = "";
+    status.textContent = "Testing both Docker client origins...";
+    try {
+        const response = await fetch("/api/verify-recursion-acl", {method: "POST"});
+        const payload = await response.json();
+        if (!response.ok || !payload.success) throw new Error(payload.message || "Verification failed");
+        renderAclResult(payload.data);
+        status.textContent = `Completed: ${payload.data.timestamp_utc}`;
+    } catch (error) {
+        status.textContent = `Verification unavailable: ${error.message}`;
+    } finally {
+        button.disabled = false;
+    }
+}
+
 document.addEventListener("DOMContentLoaded", () => {
     loadResults();
 });
@@ -215,17 +266,20 @@ function showEvidence(result) {
     document.getElementById("auth-answers").textContent =
         authoritative.answer_count ?? 0;
 
+    document.getElementById("auth-attempts").textContent =
+        authoritative.attempts ?? "--";
+
     document.getElementById("recursive-answer-list").textContent =
-    formatAnswers(recursive.answers);
+        formatAnswers(recursive.answers);
 
-document.getElementById("recursive-error").textContent =
-    recursive.error ?? "None";
+    document.getElementById("recursive-error").textContent =
+        recursive.error ?? "None";
 
-document.getElementById("auth-answer-list").textContent =
-    formatAnswers(authoritative.answers);
+    document.getElementById("auth-answer-list").textContent =
+        formatAnswers(authoritative.answers);
 
-document.getElementById("auth-error").textContent =
-    authoritative.error ?? "None";
+    document.getElementById("auth-error").textContent =
+        authoritative.error ?? "None";
 
     document.getElementById("evidence-classification").innerHTML =
         classificationBadge(result.classification);
@@ -335,6 +389,64 @@ function escapeHtml(value) {
         .replaceAll("'", "&#039;");
 }
 
+function renderLabResult(payload) {
+    document.getElementById("lab-selected-target").textContent = `${payload.name} (${payload.ip})`;
+    document.getElementById("lab-classification").innerHTML = classificationBadge(payload.classification);
+    for (const kind of ["recursive", "authoritative"]) {
+        const probe = payload[`${kind}_probe`];
+        for (const flag of ["rd", "ra", "aa"]) {
+            document.getElementById(`lab-${kind}-${flag}`).textContent =
+                probe.responded ? formatBoolean(probe[flag]) : "-- (no response)";
+        }
+        const values = {
+            rcode: probe.rcode ?? "-- (no response)",
+            "answer-count": probe.answer_count ?? 0,
+            attempts: probe.attempts ?? 1,
+            answers: formatAnswers(probe.answers),
+            error: probe.error || "None"
+        };
+        for (const [key, value] of Object.entries(values)) {
+            document.getElementById(`lab-${kind}-${key}`).textContent = value;
+        }
+    }
+    const interpretations = {
+        RECURSIVE: "The recursive probe returned NOERROR, RA=TRUE and answer records.",
+        AUTHORITATIVE_ONLY: "The recursive query was refused. The controlled-zone query returned NOERROR, AA=TRUE and answer records. The seeded A record is www.lab.example = 10.10.0.100.",
+        REFUSED: "Both queries received an explicit REFUSED response from the DNS service.",
+        INCONCLUSIVE: "Insufficient evidence to establish a DNS behaviour. A timeout does not prove recursion is disabled."
+    };
+    document.getElementById("lab-interpretation").textContent = interpretations[payload.classification] || "";
+    document.getElementById("lab-result").classList.remove("hidden");
+}
+
+async function probeLabServer() {
+    const button = document.getElementById("lab-probe-button");
+    const select = document.getElementById("lab-target");
+    const status = document.getElementById("lab-status");
+    button.disabled = true;
+    select.disabled = true;
+    button.textContent = "Probing...";
+    document.getElementById("lab-result").classList.add("hidden");
+    status.classList.remove("hidden");
+    status.textContent = "Running both rate-controlled probes. Unresponsive targets require timeout retries.";
+    try {
+        const response = await fetch("/api/lab-probe", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ target: select.value })
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload.success) throw new Error(payload.message || "Lab probe failed.");
+        renderLabResult(payload);
+        status.textContent = "Lab DNS behaviour test complete. Results reflect the responses received.";
+    } catch (error) {
+        status.textContent = `Lab probe failed: ${error.message}`;
+    } finally {
+        button.disabled = false;
+        select.disabled = false;
+        button.textContent = "Probe DNS Server";
+    }
+}
+
 function setDomain(domain) {
     document.getElementById("domain-input").value = domain;
 }
@@ -397,7 +509,9 @@ async function probeDomain() {
             result.rcode ?? result.error ?? "--";
 
         document.getElementById("domain-result-ra").textContent =
-            result.ra === true
+            !result.responded
+                ? "--"
+                : result.ra === true
                 ? "TRUE"
                 : result.ra === false
                     ? "FALSE"
@@ -421,8 +535,18 @@ async function probeDomain() {
         document.getElementById("domain-result-answers").textContent =
             answers;
 
-        status.textContent =
-            `DNS query completed successfully for ${payload.domain}.`;
+        if (!result.responded) {
+            status.textContent =
+                `No DNS response from ${payload.resolver} for ${payload.domain} ` +
+                `(${result.error || "unknown network error"}). ` +
+                "Ensure the Docker DNS lab is running and open the dashboard provided by docker compose.";
+        } else if (result.rcode !== "NOERROR") {
+            status.textContent =
+                `Resolver responded with ${result.rcode} for ${payload.domain}.`;
+        } else {
+            status.textContent =
+                `DNS response received for ${payload.domain}: ${result.answer_count ?? 0} answers.`;
+        }
 
         resultPanel.classList.remove("hidden");
 

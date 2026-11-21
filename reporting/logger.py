@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, timezone
 
 
-LOG_DIRECTORY = "reporting/logs"
+LOG_DIRECTORY = "artifacts/logs"
 LOG_FILE = os.path.join(
     LOG_DIRECTORY,
     "dns_assessment.log"
